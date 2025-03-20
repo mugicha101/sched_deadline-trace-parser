@@ -15,10 +15,17 @@ class TaskParams:
 
 # represents a block of execution time
 class ExecBlock:
-  def __init__(self, cpu_id: int, start_time: int, end_time: int):
+  def __init__(self, task_id: int, job_id: int, cpu_id: int, start_time: int, end_time: int):
+    self.task_id = task_id
+    self.job_id = job_id
     self.cpu_id = cpu_id
     self.start_time = start_time
     self.end_time = end_time
+
+  def __str__(self):
+    return f"([<{self.task_id}:{self.job_id}> cpu{self.cpu_id}:[{self.start_time}:{self.end_time}])"
+  def __repr__(self):
+    return str(self)
 
 # represents a completed (or aborted) job
 class CompletedJob:
@@ -39,7 +46,8 @@ class CompletedJob:
 # represents the execution state of a task at a specific point in time
 # also records completed jobs
 class Task:
-  def __init__(self, task_id: int, params: TaskParams, do_render = False):
+  def __init__(self, task_id: int, params: TaskParams, init_time: int, do_render = False):
+    self.init_time = init_time
     self.task_id = task_id
     self.params = params
     self.job_id = -1 # current job id (-1 if none released yet)
@@ -61,6 +69,8 @@ class Task:
     self.is_completed = False
     self.release_time = time
     self.exec_start_time = 0
+    if self.exec_blocks is not None:
+      self.exec_blocks = []
 
   def execute(self, time: int, cpu_id: int) -> None:
     if self.job_id == -1:
@@ -84,7 +94,7 @@ class Task:
       raise Exception(f"[{time}ns]: Task {self.task_id} is already preempted (job id: {self.job_id})")
     
     self.is_executing = False
-    if self.exec_blocks is not None: self.exec_blocks.append(ExecBlock(self.last_cpu_id, self.exec_start_time, time))
+    if self.exec_blocks is not None: self.exec_blocks.append(ExecBlock(self.task_id, self.job_id, self.last_cpu_id, self.exec_start_time, time))
 
   def complete(self, time: int) -> None:
     if self.job_id == -1:
@@ -108,6 +118,9 @@ class Task:
     if self.is_completed:
       return
     
+    if self.is_executing:
+      self.preempt(time)
+    
     self.completed_jobs.append(CompletedJob(
       self.task_id, self.job_id,
       self.release_time, self.release_time + self.params.deadline, time,
@@ -119,5 +132,10 @@ class Task:
   
 # represents a completed taskset
 class CompletedTaskset:
-  def __init__(self, tasks: list[Task]):
+  def __init__(self, tasks: list[Task], init_time: int, completion_time: int):
     self.tasks = tasks
+    self.jobs: list[CompletedJob] = [ job for task in tasks for job in task.completed_jobs ]
+    self.jobs.sort(key = lambda job : job.release_time)
+    self.init_time = init_time
+    self.completion_time = completion_time
+    self.cpu_ids = list(set([ exec_block.cpu_id for task in tasks for job in task.completed_jobs if job.exec_blocks is not None for exec_block in job.exec_blocks ]))

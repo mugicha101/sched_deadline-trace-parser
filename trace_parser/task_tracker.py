@@ -13,6 +13,16 @@ class TaskTracker:
     self.completed_tasksets: list[CompletedTaskset] = []
     self.is_complete = True
     self.taskset_id = -1
+    self.taskset_init_time = -1
+
+  def set_time(self, time):
+    if time < self.time:
+      raise Exception(f"[{self.time}ns] Attempted to go back in time (new time: {time} < curr time: {self.time})")
+    
+    self.time = time
+
+  def get_time(self) -> int:
+    return self.time
 
   def new_taskset(self):
     if not self.is_complete:
@@ -22,6 +32,7 @@ class TaskTracker:
     self.tasks = []
     self.id_map = {}
     self.is_complete = False
+    self.taskset_init_time = self.time
 
   def complete_taskset(self):
     if self.is_complete:
@@ -31,7 +42,7 @@ class TaskTracker:
     for task in self.tasks:
       task.abort(self.time, False)
 
-    taskset = CompletedTaskset(self.tasks)
+    taskset = CompletedTaskset(self.tasks, self.taskset_init_time, self.time)
     self.completed_tasksets.append(taskset)
 
     if self.do_render:
@@ -51,18 +62,5 @@ class TaskTracker:
     key = (vpid, vtid)
     if key in self.id_map:
       raise Exception(f"[{self.time}ns] Multiple tasks mapped to same thread (vpid={vpid}, vtid={vtid}):\n    existing task: {self.get_task(vpid, vtid).params}\n    incoming task: {params}")
-    self.tasks.append(Task(len(self.tasks), params, do_render=self.do_render))
+    self.tasks.append(Task(len(self.tasks), params, self.time, do_render=self.do_render))
     self.id_map[key] = self.tasks[-1].task_id
-
-# testing
-
-tracker = TaskTracker(do_render=True)
-tracker.new_taskset()
-tracker.add_task(0, 0, TaskParams(1, 1, 1))
-tracker.get_task(0, 0).release(0)
-tracker.get_task(0, 0).execute(0, 1)
-tracker.get_task(0, 0).preempt(1)
-tracker.get_task(0, 0).execute(1, 2)
-tracker.get_task(0, 0).preempt(2)
-tracker.get_task(0, 0).complete(2)
-tracker.get_task(0, 0).release(2)

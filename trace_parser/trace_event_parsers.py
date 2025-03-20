@@ -9,7 +9,7 @@ parser_map: dict[str, Callable[[TaskTracker, TraceEventMessage], Any]] = {}
 
 def parse_trace_event_message(tracker: TaskTracker, msg: TraceEventMessage) -> Any:
   name = msg.event.name
-  tracker.time = msg.default_clock_snapshot.ns_from_origin
+  tracker.set_time(msg.default_clock_snapshot.ns_from_origin)
   return parser_map[name](tracker, msg.event) if name in parser_map else None
 
 def trace_event_parser(namespace: str, name: str):
@@ -31,8 +31,8 @@ def task_init(tracker: TaskTracker, event: TraceEvent):
 @trace_event_parser("task_proc", "job_release")
 def job_release(tracker: TaskTracker, event: TraceEvent):
   task = tracker.get_task(event["vpid"], event["vtid"])
-  task.release(tracker.time)
+  task.release(tracker.get_time())
 
 @trace_event_parser("ros2", "callback_start")
 def debug(tracker: TaskTracker, event: TraceEvent):
-  print(time2str(tracker.time), flush=False)
+  print(time2str(tracker.get_time()), flush=False)
