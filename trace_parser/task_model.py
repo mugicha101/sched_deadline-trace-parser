@@ -99,12 +99,13 @@ class Task:
   def complete(self, time: int) -> None:
     if self.job_id == -1:
       raise Exception(f"[{time}ns]: Task {self.task_id} has not released any jobs")
-    if self.is_executing:
-      raise Exception(f"[{time}ns]: Task {self.task_id} cannot complete without preempting (job id: {self.job_id})")
     if self.is_completed:
       raise Exception(f"[{time}ns]: Task {self.task_id} is already finished (job id: {self.job_id})")
     if self.last_cpu_id == -1:
       raise Exception(f"[{time}ns]: Task {self.task_id} cannot complete without executing (job id: {self.job_id})")
+    
+    if self.is_executing:
+      self.preempt(time)
     
     self.is_completed = True
     self.completed_jobs.append(CompletedJob(
