@@ -12,7 +12,7 @@ class TaskParams:
     self.wcet = wcet
 
   def __str__(self):
-    return f"(P={self.period}, D={self.deadline}, C={self.wcet})"
+    return f"(P={round(self.period, 2)}, C={round(self.wcet, 2)})" if self.deadline == self.period else f"(P={round(self.period, 2)}, C={round(self.wcet, 2)}), D={round(self.deadline, 2)})"
 
   def __repr__(self):
     return str(self)
@@ -68,7 +68,7 @@ class Task:
     if Args.verbose: print(f"{self}: init")
 
   def __str__(self):
-    return f"<Task {self.task_id}, {self.params}, job_id={self.job_id}>"
+    return f"T{self.task_id}{self.params}"
   
   def __repr__(self):
     return str(self)
@@ -117,9 +117,7 @@ class Task:
       raise Exception(f"[{time}ns]: Task {self.task_id} is already finished (job id: {self.job_id})")
     if self.last_cpu_id == -1:
       raise Exception(f"[{time}ns]: Task {self.task_id} cannot complete without executing (job id: {self.job_id})")
-    
-    if self.is_executing and self.exec_blocks is not None: self.exec_blocks.append(ExecBlock(self.task_id, self.job_id, self.last_cpu_id, self.exec_start_time, time))
-    
+
     self.is_completed = True
     self.completed_jobs.append(CompletedJob(
       self.task_id, self.job_id,
