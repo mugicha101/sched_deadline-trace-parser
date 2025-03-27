@@ -1,6 +1,7 @@
 # classes representing the task model
 
 from enum import Enum
+from args import Args
 
 # implicit unit of time: nanoseconds
 
@@ -12,6 +13,9 @@ class TaskParams:
 
   def __str__(self):
     return f"(P={self.period}, D={self.deadline}, C={self.wcet})"
+
+  def __repr__(self):
+    return str(self)
 
 # represents a block of execution time
 class ExecBlock:
@@ -46,7 +50,7 @@ class CompletedJob:
 # represents the execution state of a task at a specific point in time
 # also records completed jobs
 class Task:
-  def __init__(self, task_id: int, params: TaskParams, init_time: int, do_render = False):
+  def __init__(self, task_id: int, params: TaskParams, init_time: int, cpu_id: int):
     self.init_time = init_time
     self.task_id = task_id
     self.params = params
@@ -56,10 +60,21 @@ class Task:
     self.is_completed = True # current job completed or no job released?
     self.migrations = 0
     self.release_time = 0
-    self.exec_blocks: list[ExecBlock] | None = [] if do_render else None
+    self.exec_start_time = 0
+    self.exec_blocks: list[ExecBlock] | None = [] if Args.do_render else None
     self.completed_jobs: list[CompletedJob] = []
+    if cpu_id != -1:
+      self.execute(init_time, cpu_id)
+    if Args.verbose: print(f"{self}: init")
 
-  def release(self, time: int) -> None:
+  def __str__(self):
+    return f"<Task {self.task_id}, {self.params}, job_id={self.job_id}>"
+  
+  def __repr__(self):
+    return str(self)
+
+  def release(self, time: int, cpu_id: int) -> None:
+    if Args.verbose: print(f"{self}: release({time})")
     if not self.is_completed:
       raise Exception(f"[{time}ns]: Task {self.task_id} released new job before old job completed (old job id: {self.job_id})")
     
@@ -71,14 +86,13 @@ class Task:
     self.exec_start_time = 0
     if self.exec_blocks is not None:
       self.exec_blocks = []
+    if cpu_id != -1:
+      self.execute(time, cpu_id)
 
   def execute(self, time: int, cpu_id: int) -> None:
-    if self.job_id == -1:
-      raise Exception(f"[{time}ns]: Task {self.task_id} has not released any jobs")
+    if Args.verbose: print(f"{self}: execute({time}, {cpu_id})")
     if self.is_executing:
       raise Exception(f"[{time}ns]: Task {self.task_id} is already running (job id: {self.job_id})")
-    if self.is_completed:
-      raise Exception(f"[{time}ns]: Task {self.task_id} is already completed (job id: {self.job_id})")
     
     if self.last_cpu_id not in [-1, cpu_id]:
       self.migrations += 1
@@ -88,8 +102,7 @@ class Task:
     self.exec_start_time = time
 
   def preempt(self, time: int) -> None:
-    if self.job_id == -1:
-      raise Exception(f"[{time}ns]: Task {self.task_id} has not released any jobs")
+    if Args.verbose: print(f"{self}: preempt({time})")
     if not self.is_executing:
       raise Exception(f"[{time}ns]: Task {self.task_id} is already preempted (job id: {self.job_id})")
     
@@ -97,6 +110,7 @@ class Task:
     if self.exec_blocks is not None: self.exec_blocks.append(ExecBlock(self.task_id, self.job_id, self.last_cpu_id, self.exec_start_time, time))
 
   def complete(self, time: int) -> None:
+    if Args.verbose: print(f"{self}: complete({time})")
     if self.job_id == -1:
       raise Exception(f"[{time}ns]: Task {self.task_id} has not released any jobs")
     if self.is_completed:
@@ -104,8 +118,7 @@ class Task:
     if self.last_cpu_id == -1:
       raise Exception(f"[{time}ns]: Task {self.task_id} cannot complete without executing (job id: {self.job_id})")
     
-    if self.is_executing:
-      self.preempt(time)
+    if self.is_executing and self.exec_blocks is not None: self.exec_blocks.append(ExecBlock(self.task_id, self.job_id, self.last_cpu_id, self.exec_start_time, time))
     
     self.is_completed = True
     self.completed_jobs.append(CompletedJob(
@@ -116,6 +129,7 @@ class Task:
     ))
 
   def abort(self, time: int, is_deadline_overrun: bool) -> None:
+    if Args.verbose: print(f"{self}: abort({time}, {is_deadline_overrun})")
     if self.is_completed:
       return
     

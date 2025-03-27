@@ -12,27 +12,36 @@ def parse_trace_event_message(tracker: TaskTracker, msg: TraceEventMessage) -> A
   tracker.set_time(msg.default_clock_snapshot.ns_from_origin)
   return parser_map[name](tracker, msg.event) if name in parser_map else None
 
-def trace_event_parser(namespace: str, name: str):
+def trace_event_parser(name):
   def decorator(func):
-    parser_map[f"{namespace}:{name}"] = func
+    parser_map[name] = func
     return func
   return decorator
 
 # trace event parsers
 
-@trace_event_parser("task_proc", "taskset_init")
+@trace_event_parser("task_proc:taskset_init")
 def taskset_init(tracker: TaskTracker, event: TraceEvent):
   tracker.new_taskset()
 
-@trace_event_parser("task_proc", "task_init")
+@trace_event_parser("task_proc:task_init")
 def task_init(tracker: TaskTracker, event: TraceEvent):
-  tracker.add_task(event["vpid"], event["vtid"], TaskParams(event["period"], event["deadline"], event["wcet"]))
+  tracker.add_task(event["vtid"], TaskParams(event["period"], event["deadline"], event["wcet"]))
 
-@trace_event_parser("task_proc", "job_release")
+@trace_event_parser("task_proc:job_release")
 def job_release(tracker: TaskTracker, event: TraceEvent):
-  task = tracker.get_task(event["vpid"], event["vtid"])
-  task.release(tracker.get_time())
+  tracker.release(event["vtid"])
 
-@trace_event_parser("ros2", "callback_start")
-def debug(tracker: TaskTracker, event: TraceEvent):
-  print(time2str(tracker.get_time()), flush=False)
+@trace_event_parser("task_proc:job_completion")
+def job_completion(tracker: TaskTracker, event: TraceEvent):
+  tracker.complete(event["vtid"])
+
+@trace_event_parser("task_proc:kill_threads")
+def job_completion(tracker: TaskTracker, event: TraceEvent):
+  tracker.complete_taskset()
+
+
+@trace_event_parser("sched_switch")
+def sched_switch(tracker: TaskTracker, event: TraceEvent):
+  tracker.preempt(event["prev_tid"])
+  tracker.execute(event["next_tid"], event["cpu_id"])

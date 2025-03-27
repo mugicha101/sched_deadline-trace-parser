@@ -1,7 +1,7 @@
 import bt2
 from bt2 import event as bt2_event, field as bt2_field, trace_collection_message_iterator
-import argparse
 import datetime
+from args import *
 
 from typing import Callable, Any
 

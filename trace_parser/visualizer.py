@@ -147,6 +147,7 @@ def render(taskset: CompletedTaskset):
   # draw realtime events
   for job in taskset.jobs:
     y = task_y[job.task_id]
+    params = taskset.tasks[job.task_id].params
 
     # release
     draw_arrow(job.release_time - taskset.init_time, y, True, RELEASE_COLOR)
@@ -155,7 +156,7 @@ def render(taskset: CompletedTaskset):
     draw_completion(job.completion_time - taskset.init_time, y, job.exit_status)
 
     # deadline
-    draw_arrow(job.absolute_deadline - taskset.init_time, y, False, DEADLINE_COLOR)
+    if params.period != params.deadline: draw_arrow(job.absolute_deadline - taskset.init_time, y, False, DEADLINE_COLOR)
 
   # draw track lines
   for y in [ *task_y.values(), *core_y.values() ]:
