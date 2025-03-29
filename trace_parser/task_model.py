@@ -142,13 +142,70 @@ class Task:
     ))
     self.is_executing = False
     self.is_completed = True
+
+# represents a scheduler invocation
+class SchedBlock:
+  def __init__(self, cpu_id: int, prev_tid: int, next_tid: int, start_time: int, end_time: int):
+    self.cpu_id = cpu_id
+    self.prev_tid = prev_tid
+    self.next_tid = next_tid
+    self.start_time = start_time
+    self.end_time = end_time
+
+    # variables set later when considering taskset data
+    self.prev_task_id = -1
+    self.next_task_id = -1
+
+# represents the state of a CPU core
+# note: enforces that the current task will not switch while the scheduler is running
+class CPUState:
+  def __init__(self, cpu_id: int):
+    # note: tid=0 is the swapper task (idle), tid=-1 means no idea (before tracing started)
+    self.cpu_id = cpu_id
+    self.curr_tid = -1 # current running task
+    self.prev_tid = -1 # last running task
+    self.active_sched_block: SchedBlock | None = None # keeps track of current scheduler invocation (None if none active)
+    self.sched_blocks: list[SchedBlock] = [] # completed sched blocks
   
+  def switch(self, tid: int, time: int):
+    if self.active_sched_block is not None:
+      raise Exception("CPU cannot switch tasks while scheduler is running")
+
+    self.prev_tid, self.curr_tid = self.curr_tid, tid
+    self.last_switch_time = time
+
+    # update last sched block with the next task
+    if len(self.sched_blocks) > 0:
+      sched_block = self.sched_blocks[-1]
+      if sched_block.next_tid == -1:
+        sched_block.next_tid = tid
+
+  def resched_enter(self, time: int):
+    if self.active_sched_block is not None:
+      raise Exception("CPU already in scheduler")
+    
+    # update last sched block with the current task if no switch had occured
+    if len(self.sched_blocks) > 0:
+      sched_block = self.sched_blocks[-1]
+      if sched_block.next_tid == -1:
+        sched_block.next_tid = self.curr_tid
+    
+    self.active_sched_block = SchedBlock(self.cpu_id, self.curr_tid, -1, time, -1)
+
+  def resched_exit(self, time: int):
+    sched_block = self.active_sched_block
+    self.active_sched_block = None
+    sched_block.end_time = time
+    self.sched_blocks.append(sched_block)
+
 # represents a completed taskset
 class CompletedTaskset:
-  def __init__(self, tasks: list[Task], init_time: int, completion_time: int):
+  def __init__(self, tasks: list[Task], sched_blocks: list[SchedBlock], init_time: int, completion_time: int):
     self.tasks = tasks
+    self.sched_blocks = sched_blocks
     self.jobs: list[CompletedJob] = [ job for task in tasks for job in task.completed_jobs ]
     self.jobs.sort(key = lambda job : job.release_time)
     self.init_time = init_time
     self.completion_time = completion_time
-    self.cpu_ids = list(set([ exec_block.cpu_id for task in tasks for job in task.completed_jobs if job.exec_blocks is not None for exec_block in job.exec_blocks ]))
+    self.cpu_ids = list(set([ sched_block.cpu_id for sched_block in sched_blocks ] + [ exec_block.cpu_id for task in tasks for job in task.completed_jobs if job.exec_blocks is not None for exec_block in job.exec_blocks ]))
+  

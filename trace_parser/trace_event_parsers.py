@@ -40,8 +40,14 @@ def job_completion(tracker: TaskTracker, event: TraceEvent):
 def job_completion(tracker: TaskTracker, event: TraceEvent):
   tracker.complete_taskset()
 
-
 @trace_event_parser("sched_switch")
 def sched_switch(tracker: TaskTracker, event: TraceEvent):
-  tracker.preempt(event["prev_tid"])
-  tracker.execute(event["next_tid"], event["cpu_id"])
+  tracker.switch(event["cpu_id"], event["prev_tid"], event["next_tid"])
+
+@trace_event_parser("x86_irq_vectors_reschedule_entry")
+def sched_entry(tracker: TaskTracker, event: TraceEvent):
+  tracker.resched_enter(event["cpu_id"])
+
+@trace_event_parser("x86_irq_vectors_reschedule_exit")
+def sched_entry(tracker: TaskTracker, event: TraceEvent):
+  tracker.resched_exit(event["cpu_id"])

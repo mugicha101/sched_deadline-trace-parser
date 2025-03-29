@@ -39,6 +39,7 @@ RELEASE_COLOR = rgb(0, 0.5, 0)
 DEADLINE_COLOR = rgb(0, 0, 0.5)
 INIT_EVENT_COLOR = rgb(0, 0, 0)
 TASKSET_COMPLETION_COLOR = rgb(0, 0, 0)
+SCHED_BLOCK_COLOR = rgb(0.5, 0.5, 0.5)
 
 def render(taskset: CompletedTaskset):
   task_y: dict[int, int] = dict([ task.task_id, 0 ] for task in taskset.tasks)
@@ -57,6 +58,9 @@ def render(taskset: CompletedTaskset):
   geo_group = ET.SubElement(svg, "g")
   ui_bg_group = ET.SubElement(svg, "g")
   ui_group = ET.SubElement(svg, "g")
+
+  def rect_font_size(width, height, text):
+    return min(height, width * 2 / max(len(text), 1))
 
   def draw_box(x=0, y=0, width=0, height=0, fill="white", stroke="black", stroke_width=0, text="", font_size=15, text_color="black", group=geo_group):
       ET.SubElement(group, "rect", x=str(x), y=str(y), width=str(width), height=str(height), stroke=stroke, fill=fill, attrib={"stroke-width": str(stroke_width)})
@@ -90,11 +94,9 @@ def render(taskset: CompletedTaskset):
     marker_pos.append((x, y))
     draw_time(time, x, y, name)
 
-  def draw_exec_block(exec_block: ExecBlock, y: int):
-    width = (exec_block.end_time - exec_block.start_time) * TIME_SCALE
-    text = f"{exec_block.task_id},{exec_block.job_id}"
-    color = core_color[exec_block.cpu_id]
-    rx = (exec_block.start_time - taskset.init_time) * TIME_SCALE + MARGIN_PADDING
+  def draw_block(start_time: int, end_time: int, y: int, text: str, color: str):
+    width = (end_time - start_time) * TIME_SCALE
+    rx = start_time * TIME_SCALE + MARGIN_PADDING
     ry = y + TRACK_HEIGHT - BLOCK_HEIGHT
 
     # border
@@ -102,7 +104,7 @@ def render(taskset: CompletedTaskset):
       rx, ry,
       width, BLOCK_HEIGHT,
       text = text,
-      font_size = min(BLOCK_HEIGHT, width * 2 / len(text)),
+      font_size = rect_font_size(width, BLOCK_HEIGHT, text),
       fill = BLOCK_BORDER_COLOR
     )
     if width > BLOCK_BORDER_THICKNESS * 2:
@@ -110,16 +112,32 @@ def render(taskset: CompletedTaskset):
       draw_box(
         rx + BLOCK_BORDER_THICKNESS, ry + BLOCK_BORDER_THICKNESS,
         width - BLOCK_BORDER_THICKNESS * 2, BLOCK_HEIGHT - BLOCK_BORDER_THICKNESS,
-        font_size = min(BLOCK_HEIGHT, width * 2 / len(text)),
+        font_size = rect_font_size(width, BLOCK_HEIGHT, text),
         fill = color
       )
 
     # duration
-    draw_time(exec_block.end_time - exec_block.start_time, rx + width * 0.5, ry - MARKER_FONT_SIZE * 2)
+    draw_time(end_time - start_time, rx + width * 0.5, ry - MARKER_FONT_SIZE * 2)
 
     # markers
-    draw_marker(exec_block.start_time - taskset.init_time, y, f"cpu {cpu_id}")
-    draw_marker(exec_block.end_time - taskset.init_time, y, f"cpu -1")
+    draw_marker(start_time, y, f"cpu {cpu_id}")
+    draw_marker(end_time, y, f"cpu -1")
+
+  def draw_exec_block(exec_block: ExecBlock):
+    text = f"{exec_block.task_id},{exec_block.job_id}"
+    color = core_color[exec_block.cpu_id]
+    for y in [ task_y[exec_block.task_id], core_y[exec_block.cpu_id] ]:
+      draw_block(exec_block.start_time - taskset.init_time, exec_block.end_time - taskset.init_time, y, text, color)
+
+  def draw_sched_block(sched_block: SchedBlock):
+    ys = [ core_y[sched_block.cpu_id] ]
+
+    for task_id in [ sched_block.prev_task_id, sched_block.next_task_id ]:
+      if task_id != -1:
+        ys.append(task_y[task_id])
+
+    for y in ys:
+      draw_block(sched_block.start_time - taskset.init_time, sched_block.end_time - taskset.init_time, y, "", SCHED_BLOCK_COLOR)
 
   def draw_arrow(time: int, y: int, up: bool, color: str, job_id: int):
     x = time * TIME_SCALE + MARGIN_PADDING
@@ -185,11 +203,12 @@ def render(taskset: CompletedTaskset):
       continue
 
     for exec_block in job.exec_blocks:
-      # fill task track
-      draw_exec_block(exec_block, task_y[exec_block.task_id])
+      draw_exec_block(exec_block)
 
-      # fill core track
-      draw_exec_block(exec_block, core_y[exec_block.cpu_id])
+  # draw sched blocks
+  for sched_block in taskset.sched_blocks:
+    # draw_sched_block(sched_block)
+    pass # disabled for now until theres a better way to display small blocks
 
   # draw realtime events
   for job in taskset.jobs:
@@ -214,7 +233,7 @@ def render(taskset: CompletedTaskset):
       x, y + TRACK_HEIGHT - BLOCK_HEIGHT,
       MARGIN_PADDING , BLOCK_HEIGHT - BLOCK_BORDER_THICKNESS,
       text = text,
-      font_size = min(BLOCK_HEIGHT, MARGIN_PADDING * 2 / len(text)),
+      font_size = rect_font_size(MARGIN_PADDING, BLOCK_HEIGHT, text),
       fill = "none"
     )
     triangle_pts = f"{x + MARGIN_PADDING - (INIT_EVENT_WIDTH * 0.5)},{y + TRACK_HEIGHT} {x + MARGIN_PADDING + (INIT_EVENT_WIDTH * 0.5)},{y + TRACK_HEIGHT} {x + MARGIN_PADDING},{y + TRACK_HEIGHT - INIT_EVENT_HEIGHT}"
