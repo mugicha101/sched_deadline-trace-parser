@@ -1,6 +1,10 @@
 # CLI tool for parsing LTTNG traces generated from experiments
 
 import os
+import sys
+
+sys.path.append("src")
+
 from trace_imports import *
 from trace_event_parsers import parse_trace_event_message
 from task_tracker import TaskTracker
@@ -21,7 +25,8 @@ def parse_trace(trace: TraceIterator):
 def main():
   parse_args()
   trace = extract_trace(Args.path)
-  os.mkdir(Args.output_path)
+  if not os.path.isdir(Args.output_path):
+    os.mkdir(Args.output_path)
   parse_trace(trace)
 
 if __name__ == "__main__":
