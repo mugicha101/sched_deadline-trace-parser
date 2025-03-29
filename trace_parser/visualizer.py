@@ -41,7 +41,7 @@ INIT_EVENT_COLOR = rgb(0, 0, 0)
 TASKSET_COMPLETION_COLOR = rgb(0, 0, 0)
 SCHED_BLOCK_COLOR = rgb(0.5, 0.5, 0.5)
 
-def render(taskset: CompletedTaskset):
+def render(taskset: CompletedTaskset, output_path: str):
   task_y: dict[int, int] = dict([ task.task_id, 0 ] for task in taskset.tasks)
   for track_idx, task_id in enumerate(task_y.keys()):
     task_y[task_id] = track_idx * TRACK_HEIGHT + MARGIN_PADDING
@@ -253,5 +253,5 @@ def render(taskset: CompletedTaskset):
     draw_box(0, y + TRACK_HEIGHT, img_width, TRACK_LINE_HEIGHT, "black")
 
   tree = ET.ElementTree(svg)
-  tree.write("test.svg")
+  tree.write(output_path)
   

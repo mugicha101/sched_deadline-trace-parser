@@ -21,6 +21,7 @@ def parse_trace(trace: TraceIterator):
 def main():
   parse_args()
   trace = extract_trace(Args.path)
+  os.mkdir(Args.output_path)
   parse_trace(trace)
 
 if __name__ == "__main__":

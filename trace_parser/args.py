@@ -1,9 +1,9 @@
 import argparse
 import os
 
+# global way to access args
 class Args:
-  do_render = False
-  verbose = False
+  pass
 
 def dir_path(string) -> str:
   if os.path.isdir(string):
@@ -16,7 +16,7 @@ def parse_args() -> argparse.Namespace:
   parser.add_argument("path", help="Path to LTTNG trace data", type=dir_path)
   parser.add_argument("-r", "--render", help="Render visualization of job executions", action=argparse.BooleanOptionalAction)
   parser.add_argument("-v", "--verbose", help="Output debug logs", action=argparse.BooleanOptionalAction)
+  parser.add_argument("-o", "--output-path", help="Path to output to", default="./output")
   args = parser.parse_args()
-  Args.do_render = args.render
-  Args.verbose = args.verbose
-  Args.path = args.path
+  for field in vars(args):
+    setattr(Args, field, getattr(args, field))

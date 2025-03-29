@@ -61,7 +61,7 @@ class Task:
     self.migrations = 0
     self.release_time = 0
     self.exec_start_time = 0
-    self.exec_blocks: list[ExecBlock] | None = [] if Args.do_render else None
+    self.exec_blocks: list[ExecBlock] | None = [] if Args.render else None
     self.completed_jobs: list[CompletedJob] = []
     if cpu_id != -1:
       self.execute(init_time, cpu_id)

@@ -78,10 +78,11 @@ class TaskTracker:
     sched_blocks.sort(key=lambda sb : sb.start_time )
 
     taskset = CompletedTaskset(self.tasks, sched_blocks, self.taskset_init_time, self.time)
-    self.completed_tasksets.append(taskset)
 
-    if Args.do_render:
-      render(taskset)
+    if Args.render:
+      render(taskset, f"{Args.output_path}/taskset_{len(self.completed_tasksets)}.svg")
+
+    self.completed_tasksets.append(taskset)
 
   def get_task(self, tid) -> Task | None:
     if self.is_complete:

@@ -2,7 +2,7 @@
 from task_tracker import *
 
 MS = 1000000
-Args.do_render = True
+Args.render = True
 tracker = TaskTracker()
 tracker.set_time(100 * MS)
 tracker.new_taskset()
