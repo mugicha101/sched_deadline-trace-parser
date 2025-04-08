@@ -8,7 +8,7 @@ from task_model import *
 import xml.etree.ElementTree as ET
 
 TIME_SCALE = 1 / 1000000
-TRACK_HEIGHT = 100
+TRACK_HEIGHT = 150
 TIMELINE_SEPARATION = 200
 MARGIN_PADDING = 500
 BLOCK_HEIGHT = 50
@@ -24,7 +24,8 @@ TRACK_LINE_HEIGHT = 3
 INIT_EVENT_WIDTH = 30
 INIT_EVENT_HEIGHT = 60
 TASKSET_COMPLETION_WIDTH = 20
-MARKER_FONT_SIZE = 5
+MARKER_FONT_SIZE = 3
+SFUNC_BLOCK_HEIGHT = 20
 
 def rgb(r: float, g: float, b: float) -> str:
   return f"rgb({round(r * 255)}, {round(g * 255)}, {round(b * 255)})"
@@ -39,7 +40,7 @@ RELEASE_COLOR = rgb(0, 0.5, 0)
 DEADLINE_COLOR = rgb(0, 0, 0.5)
 INIT_EVENT_COLOR = rgb(0, 0, 0)
 TASKSET_COMPLETION_COLOR = rgb(0, 0, 0)
-SCHED_BLOCK_COLOR = rgb(0.5, 0.5, 0.5)
+SFUNC_BLOCK_COLOR = rgb(0.75, 0.75, 0.75)
 
 def render(taskset: CompletedTaskset, output_path: str):
   task_y: dict[int, int] = dict([ task.task_id, 0 ] for task in taskset.tasks)
@@ -61,8 +62,14 @@ def render(taskset: CompletedTaskset, output_path: str):
 
   def rect_font_size(width, height, text):
     return min(height, width * 2 / max(len(text), 1))
+  
+  def add_tooltip(group: ET.Element, text: str):
+    ET.SubElement(group, "title").text = text
 
-  def draw_box(x=0, y=0, width=0, height=0, fill="white", stroke="black", stroke_width=0, text="", font_size=15, text_color="black", group=geo_group):
+  def draw_box(x=0, y=0, width=0, height=0, fill="white", stroke="black", stroke_width=0, text="", font_size=15, text_color="black", group=geo_group, tooltip=""):
+      if len(tooltip) > 0:
+        group = ET.SubElement(group, "g")
+        add_tooltip(group, tooltip)
       ET.SubElement(group, "rect", x=str(x), y=str(y), width=str(width), height=str(height), stroke=stroke, fill=fill, attrib={"stroke-width": str(stroke_width)})
       if len(text) > 0:
         ET.SubElement(ui_group, "text", x=str(x + width * 0.5), y=str(y + height * 0.5), fill=text_color, attrib={ "font-size": str(font_size), "dominant-baseline": "middle", "text-anchor": "middle" }).text = text
@@ -84,60 +91,58 @@ def render(taskset: CompletedTaskset, output_path: str):
   def draw_marker(time, track_y, name=""):
     x = time * TIME_SCALE + MARGIN_PADDING
     y = track_y + TRACK_HEIGHT + TRACK_LINE_HEIGHT + MARKER_FONT_SIZE * 0.25
-    valid = False
-    while not valid:
+    for _ in range(10):
       valid = True
       for ox, oy in marker_pos:
         if oy == y and abs(ox - x) <= MARKER_FONT_SIZE * 4:
           valid = False
           y += MARKER_FONT_SIZE * 2.5
+          break
+      if valid:
+        break
     marker_pos.append((x, y))
     draw_time(time, x, y, name)
 
-  def draw_block(start_time: int, end_time: int, y: int, text: str, color: str):
+  def draw_block(start_time: int, end_time: int, track_y: int, bottom_offset: int, height: float, text: str, color: str):
     width = (end_time - start_time) * TIME_SCALE
     rx = start_time * TIME_SCALE + MARGIN_PADDING
-    ry = y + TRACK_HEIGHT - BLOCK_HEIGHT
+    ry = track_y + TRACK_HEIGHT - bottom_offset - height
 
     # border
     draw_box(
       rx, ry,
-      width, BLOCK_HEIGHT,
+      width, height,
       text = text,
-      font_size = rect_font_size(width, BLOCK_HEIGHT, text),
+      font_size = rect_font_size(width, height, text),
       fill = BLOCK_BORDER_COLOR
     )
     if width > BLOCK_BORDER_THICKNESS * 2:
       # body
       draw_box(
         rx + BLOCK_BORDER_THICKNESS, ry + BLOCK_BORDER_THICKNESS,
-        width - BLOCK_BORDER_THICKNESS * 2, BLOCK_HEIGHT - BLOCK_BORDER_THICKNESS,
-        font_size = rect_font_size(width, BLOCK_HEIGHT, text),
-        fill = color
+        width - BLOCK_BORDER_THICKNESS * 2, height - BLOCK_BORDER_THICKNESS,
+        font_size = rect_font_size(width, height, text),
+        fill = color,
+        tooltip = f"start: {start_time}ns\nend: {end_time}ns\nduration: {end_time - start_time}ns"
       )
 
     # duration
     draw_time(end_time - start_time, rx + width * 0.5, ry - MARKER_FONT_SIZE * 2)
 
     # markers
-    draw_marker(start_time, y, f"cpu {cpu_id}")
-    draw_marker(end_time, y, f"cpu -1")
+    if (duration * TIME_SCALE > MARKER_FONT_SIZE * 2):
+      draw_marker(start_time, track_y, f"cpu {cpu_id}")
+      draw_marker(end_time, track_y, f"cpu -1")
 
-  def draw_exec_block(exec_block: ExecBlock):
+  def draw_task_exec_block(exec_block: TaskExecBlock):
     text = f"{exec_block.task_id},{exec_block.job_id}"
     color = core_color[exec_block.cpu_id]
     for y in [ task_y[exec_block.task_id], core_y[exec_block.cpu_id] ]:
-      draw_block(exec_block.start_time - taskset.init_time, exec_block.end_time - taskset.init_time, y, text, color)
+      draw_block(exec_block.start_time - taskset.init_time, exec_block.end_time - taskset.init_time, y, 0, BLOCK_HEIGHT, text, color)
 
-  def draw_sched_block(sched_block: SchedBlock):
-    ys = [ core_y[sched_block.cpu_id] ]
-
-    for task_id in [ sched_block.prev_task_id, sched_block.next_task_id ]:
-      if task_id != -1:
-        ys.append(task_y[task_id])
-
-    for y in ys:
-      draw_block(sched_block.start_time - taskset.init_time, sched_block.end_time - taskset.init_time, y, "", SCHED_BLOCK_COLOR)
+  def draw_sfunc_block(sfunc_block: SFuncBlock):
+    y = core_y[sfunc_block.cpu_id]
+    draw_block(sfunc_block.entry_time - taskset.init_time, sfunc_block.exit_time - taskset.init_time, y, sfunc_block.nesting * SFUNC_BLOCK_HEIGHT, SFUNC_BLOCK_HEIGHT, sfunc_block.name, SFUNC_BLOCK_COLOR)
 
   def draw_arrow(time: int, y: int, up: bool, color: str, job_id: int):
     x = time * TIME_SCALE + MARGIN_PADDING
@@ -198,25 +203,38 @@ def render(taskset: CompletedTaskset, output_path: str):
     draw_marker(time, y, f"J{job_id} {exit_status_str}")
   
   # draw exec blocks
+  if Args.verbose: print("drawing exec blocks")
   for job in taskset.jobs:
     if job.exec_blocks is None:
       continue
 
     for exec_block in job.exec_blocks:
-      draw_exec_block(exec_block)
+      draw_task_exec_block(exec_block)
 
-  # draw sched blocks
-  for sched_block in taskset.sched_blocks:
-    # draw_sched_block(sched_block)
-    pass # disabled for now until theres a better way to display small blocks
+  # draw sfunc blocks
+  if Args.verbose: print("drawing sfunc blocks")
+  for sfunc_block in taskset.sfunc_blocks:
+    # draw_sfunc_block(sfunc_block)
+    pass
+
+  # draw cswitch blocks
+  # TODO
+
+  # draw migrations
+  # TODO
 
   # draw realtime events
+  if Args.verbose: print("drawing realtime events")
   for job in taskset.jobs:
     y = task_y[job.task_id]
     params = taskset.tasks[job.task_id].params
 
-    # release
-    draw_arrow(job.release_time - taskset.init_time, y, True, RELEASE_COLOR, job.job_id)
+    # true release
+    if job.release_time is not None:
+      draw_marker(job.release_time - taskset.init_time, y, f"J{job.job_id} true release")
+
+    # userspace release
+    draw_marker(job.userspace_release_time - taskset.init_time, y, f"J{job.job_id} userspace release")
 
     # completion
     draw_completion(job.completion_time - taskset.init_time, y, job.job_id, job.exit_status)
@@ -225,6 +243,7 @@ def render(taskset: CompletedTaskset, output_path: str):
     if params.period != params.deadline: draw_arrow(job.absolute_deadline - taskset.init_time, y, False, DEADLINE_COLOR, job.job_id)
 
   # draw task inits
+  if Args.verbose: print("drawing task inits")
   for task in taskset.tasks:
     y = task_y[task.task_id]
     x = (task.init_time - taskset.init_time) * TIME_SCALE
@@ -241,6 +260,7 @@ def render(taskset: CompletedTaskset, output_path: str):
     draw_marker(task.init_time - taskset.init_time, y, f"T{task.task_id} init")
   
   # draw taskset completion
+  if Args.verbose: print("drawing taskset completion")
   tcx = duration * TIME_SCALE + MARGIN_PADDING
   draw_box(
     tcx, MARGIN_PADDING,
@@ -249,9 +269,12 @@ def render(taskset: CompletedTaskset, output_path: str):
   )
 
   # draw track lines
+  if Args.verbose: print("drawing track lines")
   for y in [ *task_y.values(), *core_y.values() ]:
     draw_box(0, y + TRACK_HEIGHT, img_width, TRACK_LINE_HEIGHT, "black")
 
+  # output
+  if Args.verbose: print("saving to output")
   tree = ET.ElementTree(svg)
   tree.write(output_path)
   

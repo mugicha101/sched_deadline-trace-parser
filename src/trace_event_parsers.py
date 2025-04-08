@@ -2,6 +2,7 @@
 
 from trace_imports import *
 from task_tracker import *
+from sched_class_funcs import *
 
 # trace event name --> parser bookkeeping
 
@@ -44,10 +45,62 @@ def job_completion(tracker: TaskTracker, event: TraceEvent):
 def sched_switch(tracker: TaskTracker, event: TraceEvent):
   tracker.switch(event["cpu_id"], event["prev_tid"], event["next_tid"])
 
-@trace_event_parser("x86_irq_vectors_reschedule_entry")
-def sched_entry(tracker: TaskTracker, event: TraceEvent):
-  tracker.resched_enter(event["cpu_id"])
+# NOTE: NOT ACTUALLY THE SCHEDULER
+# @trace_event_parser("x86_irq_vectors_reschedule_entry")
+# def sched_entry(tracker: TaskTracker, event: TraceEvent):
+#   tracker.resched_enter(event["cpu_id"])
 
-@trace_event_parser("x86_irq_vectors_reschedule_exit")
-def sched_entry(tracker: TaskTracker, event: TraceEvent):
-  tracker.resched_exit(event["cpu_id"])
+# @trace_event_parser("x86_irq_vectors_reschedule_exit")
+# def sched_entry(tracker: TaskTracker, event: TraceEvent):
+#   tracker.resched_exit(event["cpu_id"])
+
+@trace_event_parser("rcu_utilization")
+def rcu_util(tracker: TaskTracker, event: TraceEvent):
+  cpu_id = event["cpu_id"]
+  match event["s"]:
+    case "Start context switch":
+      tracker.cswitch_start(cpu_id)
+    case "End context switch":
+      tracker.cswitch_end(cpu_id)
+
+@trace_event_parser("sched_migrate_task")
+def migrate(tracker: TaskTracker, event: TraceEvent):
+  tracker.migrate(event["tid"], event["orig_cpu"], event["dest_cpu"])
+
+# add trace handlers for scheduler functions
+SCHED_CLASSES = [
+  SCHED_DL_CLASS_FUNCS,
+  # SCHED_EXT_CLASS_FUNCS
+]
+
+def gen_sfunc_handlers(name):
+  @trace_event_parser(f"{name}_entry")
+  def sfunc_entry(tracker: TaskTracker, event: TraceEvent):
+    tracker.sfunc_entry(name, event["cpu_id"])
+  @trace_event_parser(f"{name}_exit")
+  def sfunc_exit(tracker: TaskTracker, event: TraceEvent):
+    tracker.sfunc_exit(name, event["cpu_id"])
+  return sfunc_entry, sfunc_exit
+
+for sfunc in SFUNCS:
+  gen_sfunc_handlers(sfunc)
+
+# to figure out when a task is truly released,
+# identify which hrtimer was called during its sched_yield
+# the same hrtimer calling hrtimer_cancel should signify the release
+# - may be cancelled from a different core
+# from there it will be enqueued onto the dl_rq and possibly migrated
+# release delay as defined in bjorn's diss is interval between the event triggering the release of a job and the first instruction executed by the job
+# this is modeled by taking the time between timer_hrtimer_cancel and task_proc:job_release
+
+@trace_event_parser("timer_hrtimer_cancel")
+def hrtimer_cancel(tracker: TaskTracker, event: TraceEvent):
+  tracker.hrtimer_cancel(event["hrtimer"])
+
+@trace_event_parser("timer_hrtimer_start")
+def hrtimer_start(tracker: TaskTracker, event: TraceEvent):
+  tracker.hrtimer_start(event["cpu_id"], event["hrtimer"])
+
+gen_sfunc_handlers("timer_hrtimer_expire")
+gen_sfunc_handlers("replenish_dl_entity")
+gen_sfunc_handlers("dl_task_timer")

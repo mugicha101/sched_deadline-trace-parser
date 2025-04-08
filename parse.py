@@ -3,7 +3,7 @@
 import os
 import sys
 
-sys.path.append("src")
+sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/src")
 
 from trace_imports import *
 from trace_event_parsers import parse_trace_event_message

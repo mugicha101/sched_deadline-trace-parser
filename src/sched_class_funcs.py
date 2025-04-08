@@ -1,0 +1,50 @@
+SCHED_DL_CLASS_FUNCS = [
+  "enqueue_task_dl",
+  "dequeue_task_dl",
+  "yield_task_dl",
+  "wakeup_preempt_dl",
+  "pick_task_dl",
+  "put_prev_task_dl",
+  "set_next_task_dl",
+  "balance_dl",
+  "select_task_rq_dl",
+  "migrate_task_rq_dl",
+  "set_cpus_allowed_dl",
+  "rq_online_dl",
+  "rq_offline_dl",
+  "task_woken_dl",
+  "find_lock_later_rq",
+  "task_tick_dl",
+  "task_fork_dl",
+  "prio_changed_dl",
+  "switched_from_dl",
+  "switched_to_dl",
+  "update_curr_dl",
+  "task_is_throttled_dl"
+]
+
+SCHED_EXT_CLASS_FUNCS = [
+  "enqueue_task_scx",
+  "dequeue_task_scx",
+  "yield_task_scx",
+  "yield_to_task_scx",
+  "wakeup_preempt_scx",
+  "balance_scx",
+  "pick_task_scx",
+  "put_prev_task_scx",
+  "set_next_task_scx",
+  "select_task_rq_scx",
+  "task_woken_scx",
+  "set_cpus_allowed_scx",
+  "rq_online_scx",
+  "rq_offline_scx",
+  "task_tick_scx",
+  "switching_to_scx",
+  "switched_from_scx",
+  "switched_to_scx",
+  "reweight_task_scx",
+  # "prio_changed_scx",
+  # "update_curr_scx"
+]
+
+SFUNCS = SCHED_DL_CLASS_FUNCS + SCHED_EXT_CLASS_FUNCS
