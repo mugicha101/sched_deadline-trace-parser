@@ -180,6 +180,9 @@ class Task:
   def abort(self, time: int, is_deadline_overrun: bool) -> None:
     if Args.verbose: print(f"{self}: abort({time}, {is_deadline_overrun})")
     if self.is_completed:
+      # if overrun, retroactively set the previous job to be an overrun
+      if is_deadline_overrun and len(self.completed_jobs) > 0:
+        self.completed_jobs[-1].exit_status = CompletedJob.ExitStatus.DEADLINE_OVERRUN
       return
     
     if self.is_executing:

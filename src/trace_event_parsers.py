@@ -4,14 +4,32 @@ from trace_imports import *
 from task_tracker import *
 from sched_class_funcs import *
 
+import sys
+
 # trace event name --> parser bookkeeping
 
 parser_map: dict[str, Callable[[TaskTracker, TraceEventMessage], Any]] = {}
 
+display_data = {
+  "next_update": datetime.datetime(year=1960, month=1, day=1),
+  "update_period": datetime.timedelta(seconds=0.1),
+  "parsed_msgs": 0
+}
+
 def parse_trace_event_message(tracker: TaskTracker, msg: TraceEventMessage) -> Any:
+  old_print_count = print_count["amount"]
   name = msg.event.name
   tracker.set_time(msg.default_clock_snapshot.ns_from_origin)
-  return parser_map[name](tracker, msg.event) if name in parser_map else None
+  ret = parser_map[name](tracker, msg.event) if name in parser_map else None
+  display_data["parsed_msgs"] += 1
+  now = datetime.datetime.now()
+
+  # display progress bar
+  if print_count["amount"] != old_print_count or now >= display_data["next_update"]:
+    display_data["next_update"] = now + display_data["update_period"]
+    parsed_msgs = display_data["parsed_msgs"]
+    print(f"{parsed_msgs} [{time2str(tracker.time)}]", end="\r")
+  return ret
 
 def trace_event_parser(name):
   def decorator(func):
@@ -40,6 +58,10 @@ def job_completion(tracker: TaskTracker, event: TraceEvent):
 @trace_event_parser("task_proc:kill_threads")
 def job_completion(tracker: TaskTracker, event: TraceEvent):
   tracker.complete_taskset()
+
+@trace_event_parser("task_proc:deadline_overrun")
+def deadline_overrun(tracker: TaskTracker, event: TraceEvent):
+  tracker.deadline_overrun(event["vtid"])
 
 @trace_event_parser("sched_switch")
 def sched_switch(tracker: TaskTracker, event: TraceEvent):
@@ -99,7 +121,7 @@ def hrtimer_cancel(tracker: TaskTracker, event: TraceEvent):
 
 @trace_event_parser("timer_hrtimer_start")
 def hrtimer_start(tracker: TaskTracker, event: TraceEvent):
-  tracker.hrtimer_start(event["cpu_id"], event["hrtimer"])
+  tracker.hrtimer_start(event["cpu_id"], event["hrtimer"], event["mode"])
 
 gen_sfunc_handlers("timer_hrtimer_expire")
 gen_sfunc_handlers("replenish_dl_entity")

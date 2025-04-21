@@ -2,6 +2,7 @@ import bt2
 from bt2 import event as bt2_event, field as bt2_field, trace_collection_message_iterator
 from pretty_time import *
 from args import *
+from print_tracker import *
 
 from typing import Callable, Any
 

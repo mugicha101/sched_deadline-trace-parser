@@ -230,11 +230,12 @@ def render(taskset: CompletedTaskset, output_path: str):
     params = taskset.tasks[job.task_id].params
 
     # true release
-    if job.release_time is not None:
-      draw_marker(job.release_time - taskset.init_time, y, f"J{job.job_id} true release")
+    # if job.release_time is not None:
+      # draw_marker(job.release_time - taskset.init_time, y, f"J{job.job_id} true release")
 
     # userspace release
-    draw_marker(job.userspace_release_time - taskset.init_time, y, f"J{job.job_id} userspace release")
+    # draw_marker(job.userspace_release_time - taskset.init_time, y, f"J{job.job_id} userspace release")
+    draw_arrow(job.userspace_release_time - taskset.init_time, y, True, RELEASE_COLOR, job.job_id)
 
     # completion
     draw_completion(job.completion_time - taskset.init_time, y, job.job_id, job.exit_status)

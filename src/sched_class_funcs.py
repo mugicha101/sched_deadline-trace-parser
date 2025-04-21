@@ -43,8 +43,8 @@ SCHED_EXT_CLASS_FUNCS = [
   "switched_from_scx",
   "switched_to_scx",
   "reweight_task_scx",
-  # "prio_changed_scx",
-  # "update_curr_scx"
+  "prio_changed_scx",
+  "update_curr_scx"
 ]
 
 SFUNCS = SCHED_DL_CLASS_FUNCS + SCHED_EXT_CLASS_FUNCS

@@ -18,7 +18,7 @@ class TaskTracker:
     self.taskset_init_time = -1
     self.thread_cpu: dict[int, int] = {} # tid -> cpu
     self.cpus: dict[int, CPUState] = {} # cpu id -> cpu state
-    self.yield_timers: dict[int, Task] = {} # hrtimer -> task
+    self.sleep_timers: dict[int, Task] = {} # hrtimer -> task
     self.unhandled_releases: dict[int, int] = {} # task id -> release time (based on hrtimer cancel) of releases yet to have associated job_release (used to track release delay)
 
   def set_time(self, time):
@@ -41,9 +41,9 @@ class TaskTracker:
 
   def new_taskset(self):
     if not self.is_complete:
-      raise Exception(f"[{time2str(self.time)}] Cannot create new taskset when current one is not complete (current taskset: {self.taskset_id})")
-    if len(self.yield_timers) > 0 or len(self.unhandled_releases) > 0:
-      raise Exception(f"[{time2str(self.time)}] Cannot create new taskset when yield timers are not all handled (current taskset: {self.taskset_id}, yield_timers={self.yield_timers}, unhandled_releases={self.unhandled_releases})")
+      raise Exception(f"[{time2str(self.time)}]: Cannot create new taskset when current one is not complete (current taskset: {self.taskset_id})")
+    if len(self.sleep_timers) > 0 or len(self.unhandled_releases) > 0:
+      raise Exception(f"[{time2str(self.time)}]: Cannot create new taskset when sleep timers are not all handled (current taskset: {self.taskset_id}, sleep_timers={self.sleep_timers}, unhandled_releases={self.unhandled_releases})")
     
     self.taskset_id += 1
     self.tasks = []
@@ -53,7 +53,7 @@ class TaskTracker:
 
   def complete_taskset(self):
     if self.is_complete:
-      raise Exception(f"[{time2str(self.time)}] No active taskset (last taskset: {self.taskset_id})")
+      raise Exception(f"[{time2str(self.time)}]: No active taskset (last taskset: {self.taskset_id})")
     
     self.is_complete = True
 
@@ -129,7 +129,7 @@ class TaskTracker:
       raise Exception(f"[{self.time}ns] No active taskset (last taskset: {self.taskset_id})")
     
     if tid in self.id_map:
-      raise Exception(f"[{self.time}ns] Multiple tasks mapped to same thread (tid={tid}):\n    existing task: {self.get_task(tid).params}\n    incoming task: {params}")
+      raise Exception(f"[{time2str(self.time)}]: Multiple tasks mapped to same thread (tid={tid}):\n    existing task: {self.get_task(tid).params}\n    incoming task: {params}")
     
     self.tasks.append(Task(len(self.tasks), params, self.time, self.get_thread_cpu_id(tid)))
     self.id_map[tid] = self.tasks[-1].task_id
@@ -140,7 +140,7 @@ class TaskTracker:
     cpu = self.get_cpu(cpu_id)
     cpu.switch(next_tid, self.time)
     if cpu.prev_tid != prev_tid and cpu.prev_tid != -1:
-      raise Exception(f"[{self.time}ns] CPU marked as running tid={cpu.prev_tid} but switch indicates should be running {prev_tid}")
+      raise Exception(f"[{time2str(self.time)}]: CPU marked as running tid={cpu.prev_tid} but switch indicates should be running {prev_tid}")
     
     prev_task = self.get_task(prev_tid)
     if prev_task is not None:
@@ -162,9 +162,12 @@ class TaskTracker:
     release_time = None
     if task.job_id != -1:
       if task.task_id not in self.unhandled_releases:
-        raise Exception(f"[{time2str(self.time)}]: Could not find task's release time (task={task}, job=J{task.job_id+1})")
-      release_time = self.unhandled_releases[task.task_id]
-      del self.unhandled_releases[task.task_id]
+        # this can occur in a valid way when the task completes at or after its deadline, which results in sleep_until being a no-op.
+        # for analysis, we ignore this for release delay calculations since the scheduler never releases the thread
+        if Args.verbose: print(f"[{time2str(self.time)}]: Could not find task's release time (task={task}, job=J{task.job_id+1})")
+      else:
+        release_time = self.unhandled_releases[task.task_id]
+        del self.unhandled_releases[task.task_id]
 
     task.release(release_time, self.time, cpu_id)
 
@@ -200,17 +203,27 @@ class TaskTracker:
     task.migrate(self.time, src_cpu_id, dst_cpu_id)
 
   def hrtimer_cancel(self, hrtimer: int):
-    if hrtimer in self.yield_timers:
-      task = self.yield_timers[hrtimer]
-      del self.yield_timers[hrtimer]
+    if hrtimer in self.sleep_timers:
+      task = self.sleep_timers[hrtimer]
+      del self.sleep_timers[hrtimer]
       if task.task_id in self.unhandled_releases:
         raise Exception(f"[{time2str(self.time)}]: Multiple unhandled releases on a single task (hrtimer={hex(hrtimer)}, task={task})")
       self.unhandled_releases[task.task_id] = self.time
 
-  def hrtimer_start(self, cpu_id: int, hrtimer: int):
+  def hrtimer_start(self, cpu_id: int, hrtimer: int, mode: int):
     cpu = self.get_cpu(cpu_id)
-    if len(cpu.sfunc_stack) > 0 and cpu.sfunc_stack[-1].name == "yield_task_dl":
-      task = self.get_task(cpu.curr_tid)
+    task = self.get_task(cpu.curr_tid)
+
+    if mode == 8 and len(cpu.sfunc_stack) > 0 and cpu.sfunc_stack[-1].name == "yield_task_dl":
+      # handle sched_deadline timers
+      # we know the scheduler's hrtimer is triggered when the sfunc stack has yield_task_dl on top
+      # for this one, mode=8 since the kernel is managing it
       if task is None:
         raise Exception(f"[{time2str(self.time)}]: Could not find task mapped to sched_yield's htimer start (hrtimer={hex(hrtimer)}, tid={cpu.curr_tid})")
-      self.yield_timers[hrtimer] = task
+      self.sleep_timers[hrtimer] = task
+    if mode == 1 and task is not None and task.is_completed and task.job_id != -1:
+      # handle sched_ext timers
+      # we know simulate_tasks' sleep_until hrtimer is triggered when the running thread is mapped to a task which completed
+      # mode = 8 indicates it's a per-cpu timer (not used for sleeping until next release), while sleep_until uses mode=1
+      # thus we can filter on mode=1
+      self.sleep_timers[hrtimer] = task
