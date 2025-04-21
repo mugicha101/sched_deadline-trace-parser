@@ -120,8 +120,8 @@ class TaskTracker:
 
     # output visualizations
     if Args.render:
-      for taskset in self.completed_tasksets:
-          render(taskset, f"{Args.output_path}/taskset_{len(self.completed_tasksets)}.svg")
+      for i, taskset in enumerate(self.completed_tasksets):
+          render(taskset, f"{Args.output_path}/taskset_{i}.svg")
 
   def get_task(self, tid) -> Task | None:
     if self.is_complete:
