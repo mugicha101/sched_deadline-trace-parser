@@ -255,11 +255,20 @@ class ExecData:
   def __init__(self, name: str, durations: list[int]):
     self.name = name
     self.durations = durations
-    self.count = len(durations)
-    self.mean_runtime = statistics.mean(durations) if len(durations) > 0 else -1
-    self.median_runtime = statistics.median(durations) if len(durations) > 0 else -1
-    self.max_runtime = max(durations) if len(durations) > 0 else -1
-    self.min_runtime = min(durations) if len(durations) > 0 else -1
+    self.update()
+
+  def update(self):
+    self.count = len(self.durations)
+    self.mean_runtime = statistics.mean(self.durations) if len(self.durations) > 0 else -1
+    self.median_runtime = statistics.median(self.durations) if len(self.durations) > 0 else -1
+    self.max_runtime = max(self.durations) if len(self.durations) > 0 else -1
+    self.min_runtime = min(self.durations) if len(self.durations) > 0 else -1
+
+  def extend(self, other: "ExecData"):
+    if self.name != other.name:
+      raise Exception(f"Concat name mismatch: {self.name} != {other.name}")
+    self.durations.extend(other.durations)
+    self.update()
   
 # represents the info of a certain sfunc
 class SFuncData(ExecData):
@@ -272,6 +281,7 @@ class SFuncData(ExecData):
 class CompletedTaskset:
   def __init__(self, tasks: list[Task], exec_data: dict[str, ExecData], cswitch_blocks: list[ExecBlock], init_time: int, completion_time: int):
     self.tasks = tasks
+    self.exec_data = exec_data
     self.sfunc_blocks = [ sfunc_block for data in exec_data.values() if isinstance(data, SFuncData) for sfunc_block in data.blocks ]
     self.sfunc_blocks.sort(key = lambda sfunc_block : sfunc_block.entry_time)
     self.cswitch_blocks = cswitch_blocks

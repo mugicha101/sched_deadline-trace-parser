@@ -98,25 +98,30 @@ class TaskTracker:
     exec_data["job:release_delay"] = ExecData("job:release_delay", [ job.release_delay for job in jobs if job.release_delay is not None ])
     exec_data["job:migrations"] = ExecData("job:migrations", [ job.migrations for job in jobs ])
     exec_data["job:preemptions"] = ExecData("job:preemptions", [ len(job.exec_blocks) - 1 for job in jobs ])
-    ordered_data = list(exec_data.values())
-    ordered_data.sort(key = lambda data : (data.name.split(":")[0], -data.count))
-    if Args.verbose:
-      print("EXEC STATS:")
-      print("                   name               count                 min                mean              median                 max")
-      for data in ordered_data:
-        name = data.name.rjust(30, " ")
-        def fmt(v: int | float):
-          return "{:.3f}".format(v).rjust(20, " ")
-        def ifmt(v: int):
-          return str(v).rjust(20, " ")
-        print(f" - {name}{ifmt(data.count)}{ifmt(data.min_runtime)}{fmt(data.mean_runtime)}{fmt(data.median_runtime)}{ifmt(data.max_runtime)}")
 
     taskset = CompletedTaskset(self.tasks, exec_data, cswitch_blocks, self.taskset_init_time, self.time)
-
-    if Args.render:
-      render(taskset, f"{Args.output_path}/taskset_{len(self.completed_tasksets)}.svg")
-
     self.completed_tasksets.append(taskset)
+
+  # output completed tasksets
+  def output(self):
+    # output exec data
+    combined_exec_data: dict[str, ExecData] = {}
+    for i, ts in enumerate(self.completed_tasksets):
+      exec_data = ts.exec_data
+      for data in exec_data.values():
+        if data.name in combined_exec_data:
+          combined_exec_data[data.name].extend(data)
+        else:
+          combined_exec_data[data.name] = data
+      with open(f"{Args.output_path}/taskset_{i}_stats.txt", "w") as file:
+        file.write(self.exec_data_str(exec_data))
+    with open(f"{Args.output_path}/combined_taskset_stats.txt", "w") as file:
+      file.write(self.exec_data_str(combined_exec_data))
+
+    # output visualizations
+    if Args.render:
+      for taskset in self.completed_tasksets:
+          render(taskset, f"{Args.output_path}/taskset_{len(self.completed_tasksets)}.svg")
 
   def get_task(self, tid) -> Task | None:
     if self.is_complete:
@@ -227,3 +232,24 @@ class TaskTracker:
       # mode = 8 indicates it's a per-cpu timer (not used for sleeping until next release), while sleep_until uses mode=1
       # thus we can filter on mode=1
       self.sleep_timers[hrtimer] = task
+
+  def exec_data_str(self, exec_data: dict[str, ExecData]) -> str:
+    ordered_data = list(exec_data.values())
+    ordered_data.sort(key = lambda data : (data.name.split(":")[0], -data.count))
+    res: list[str] = []
+    res.append("TABLE")
+    res.append("                   name               count                 min                mean              median                 max")
+    for data in ordered_data:
+      name = data.name.rjust(30, " ")
+      def fmt(v: int | float):
+        return "{:.3f}".format(v).rjust(20, " ")
+      def ifmt(v: int):
+        return str(v).rjust(20, " ")
+      res.append(f" - {name}{ifmt(data.count)}{ifmt(data.min_runtime)}{fmt(data.mean_runtime)}{fmt(data.median_runtime)}{ifmt(data.max_runtime)}")
+    
+    res.append("")
+    res.append("RAW DATA")
+    for data in ordered_data:
+      dura_strs = ", ".join(str(dura) for dura in data.durations)
+      res.append(f"{data.name}: [{dura_strs}]")
+    return "\n".join(res)

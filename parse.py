@@ -21,6 +21,8 @@ def parse_trace(trace: TraceIterator):
 
   if not tracker.is_complete:
     raise Exception("Last taskset never completed (likely missing tracepoints)")
+  
+  tracker.output()
 
 def main():
   parse_args()
