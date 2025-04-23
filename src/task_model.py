@@ -1,8 +1,8 @@
 # classes representing the task model
 
 from enum import Enum
-from args import Args
-from pretty_time import time2str
+from utils.args import Args
+from utils.pretty_time import time2str
 
 import statistics
 

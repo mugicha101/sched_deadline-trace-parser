@@ -47,4 +47,28 @@ SCHED_EXT_CLASS_FUNCS = [
   "update_curr_scx"
 ]
 
-SFUNCS = SCHED_DL_CLASS_FUNCS + SCHED_EXT_CLASS_FUNCS
+SCHED_RT_CLASS_FUNCS = [
+  "enqueue_task_rt",
+  "dequeue_task_rt",
+  "yield_task_rt",
+  "wakeup_preempt_rt",
+  "pick_task_rt",
+  "put_prev_task_rt",
+  "set_next_task_rt",
+  "balance_rt",
+  "select_task_rq_rt",
+  "set_cpus_allowed_common",
+  "rq_online_rt",
+  "rq_offline_rt",
+  "task_woken_rt",
+  "switched_from_rt",
+  "find_lock_lowest_rq",
+  "task_tick_rt",
+  "get_rr_interval_rt",
+  "prio_changed_rt",
+  "switched_to_rt",
+  "update_curr_rt",
+  "task_is_throttled_rt"
+]
+
+SFUNCS = SCHED_DL_CLASS_FUNCS + SCHED_EXT_CLASS_FUNCS + SCHED_RT_CLASS_FUNCS

@@ -89,12 +89,6 @@ def rcu_util(tracker: TaskTracker, event: TraceEvent):
 def migrate(tracker: TaskTracker, event: TraceEvent):
   tracker.migrate(event["tid"], event["orig_cpu"], event["dest_cpu"])
 
-# add trace handlers for scheduler functions
-SCHED_CLASSES = [
-  SCHED_DL_CLASS_FUNCS,
-  # SCHED_EXT_CLASS_FUNCS
-]
-
 def gen_sfunc_handlers(name):
   @trace_event_parser(f"{name}_entry")
   def sfunc_entry(tracker: TaskTracker, event: TraceEvent):

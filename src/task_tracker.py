@@ -3,8 +3,8 @@
 from task_model import *
 from sched_class_funcs import *
 from visualizer import render
-from pretty_time import time2str
-from args import Args
+from utils.pretty_time import time2str
+from utils.args import Args
 
 # represents the execution state of a taskset at a specific point in time
 class TaskTracker:
@@ -42,9 +42,10 @@ class TaskTracker:
   def new_taskset(self):
     if not self.is_complete:
       raise Exception(f"[{time2str(self.time)}]: Cannot create new taskset when current one is not complete (current taskset: {self.taskset_id})")
-    if len(self.sleep_timers) > 0 or len(self.unhandled_releases) > 0:
-      raise Exception(f"[{time2str(self.time)}]: Cannot create new taskset when sleep timers are not all handled (current taskset: {self.taskset_id}, sleep_timers={self.sleep_timers}, unhandled_releases={self.unhandled_releases})")
+    if len(self.sleep_timers) > 0:
+      raise Exception(f"[{time2str(self.time)}]: Cannot create new taskset when sleep timers are not all handled (current taskset: {self.taskset_id}, sleep_timers={self.sleep_timers})")
     
+    self.unhandled_releases = {}
     self.taskset_id += 1
     self.tasks = []
     self.id_map = {}
@@ -145,7 +146,8 @@ class TaskTracker:
     cpu = self.get_cpu(cpu_id)
     cpu.switch(next_tid, self.time)
     if cpu.prev_tid != prev_tid and cpu.prev_tid != -1:
-      raise Exception(f"[{time2str(self.time)}]: CPU marked as running tid={cpu.prev_tid} but switch indicates should be running {prev_tid}")
+      # can occur with kernel preemption and swapper shenanigans
+      if Args.verbose: print(f"[{time2str(self.time)}]: CPU marked as running tid={cpu.prev_tid} but switch indicates should be running {prev_tid}")
     
     prev_task = self.get_task(prev_tid)
     if prev_task is not None:
